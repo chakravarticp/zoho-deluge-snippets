@@ -1,0 +1,150 @@
+// ===============================
+// Fetch Representative Service Record
+// ===============================
+data = zoho.crm.getRecordById("Representative_Service", id);
+
+// ===============================
+// Fetch Contact Email
+// ===============================
+con_email = "";
+if(data.get("Contact_Name") != null && data.get("Contact_Name").size() > 0)
+{
+	conID = data.get("Contact_Name").get("id");
+	con_data = zoho.crm.getRecordById("Contacts", conID);
+	con_email = ifnull(con_data.get("Email"), "");
+}
+
+// ===============================
+// Fetch Child Company Email
+// ===============================
+child_email = "";
+if(data.get("Child_Account") != null && data.get("Child_Account").size() > 0)
+{
+	childID = data.get("Child_Account").get("id");
+	child_data = zoho.crm.getRecordById("Child_Company", childID);
+	child_email = ifnull(child_data.get("Manufacturer_Contact_Email"), "");
+}
+
+// ===============================
+// Fetch Record Owner Details
+// ===============================
+ownerID = data.get("Owner").get("id");
+
+OwnerData = invokeurl
+[
+	url :"https://www.zohoapis.com/crm/v2/users/" + ownerID
+	type :GET
+	connection:"zcrm"
+];
+
+rec_phone = OwnerData.get("users").getJSON("phone");
+rec_owner = data.get("Owner").get("name");
+rec_email = data.get("Owner").get("email");
+
+// ===============================
+// Fetch Product / Manufacturer Data
+// ===============================
+c_name = data.get("Manufacturer_Name");
+model_number = data.get("Model_Number");
+model_family_number = data.get("Model_Family_Numbers");
+
+// ===============================
+// Run Mail Merge only for CE AR Service
+// ===============================
+if(data.get("Service_Requested") == "CE Authorised Representative")
+{
+	mailmergename = "EU AUTHORISED REPRESENTATIVE Deliverables";
+
+	// ===============================
+	// Prepare From Address
+	// ===============================
+	fromMap = Map();
+	fromMap.put("type","email");
+	fromMap.put("value",zoho.adminuserid);
+
+	// ===============================
+	// Prepare To Address List
+	// ===============================
+	toList = List();
+
+	if(con_email != "")
+	{
+		t = Map();
+		t.put("type","email");
+		t.put("value",con_email);
+		toList.add(t);
+	}
+
+	if(child_email != "")
+	{
+		tt = Map();
+		tt.put("type","email");
+		tt.put("value",child_email);
+		toList.add(tt);
+	}
+
+	// ===============================
+	// Generic HTML Email Message
+	// ===============================
+	msg = "<html><body>"
+	+ "Hello " + c_name + ",<br><br>"
+
+	+ "Please find attached the completed <b>Authorised Representative Attestation Letter</b> for the following product(s):<br><br>"
+
+	+ "<b>Model / Product Reference:</b> " + model_number + "<br><br>"
+
+	+ "This document confirms the appointment of an Authorised Representative and outlines the defined scope of responsibilities in line with applicable regulatory requirements.<br><br>"
+
+	+ "<b>Important Notes:</b><br>"
+	+ "<ul>"
+	+ "<li>This attestation confirms the authorised representative appointment for the listed product(s).</li>"
+	+ "<li>The manufacturer remains responsible for maintaining accurate and compliant technical documentation.</li>"
+	+ "<li>Please retain this document for your compliance records.</li>"
+	+ "</ul>"
+
+	+ "If you require updates or have any questions, please feel free to contact your account representative.<br><br>"
+
+	+ "<b>Account Manager:</b> " + rec_owner + "<br>"
+	+ "<b>Email:</b> " + rec_email + "<br>"
+	+ "<b>Phone:</b> " + rec_phone + "<br><br>"
+
+	+ "Thank you for your cooperation.<br><br>"
+
+	+ "Kind regards,<br>"
+	+ rec_owner + "<br><br>"
+
+	+ "<hr style='border:none;border-top:1px solid #ccc;margin:20px 0;'>"
+	+ "<small><i>This email may contain confidential information intended only for the recipient.</i></small>"
+	+ "</body></html>";
+
+	// ===============================
+	// Prepare Mail Merge Payload
+	// ===============================
+	mp = Map();
+	mp.put("mail_merge_template",{"name":mailmergename});
+	mp.put("from_address",fromMap);
+	mp.put("to_address",toList);
+	mp.put("subject","Authorised Representative Attestation Letter – " + model_family_number);
+	mp.put("type","attachment");
+	mp.put("attachment_name","Authorised Representative " + model_family_number);
+	mp.put("message",msg);
+
+	mainList = List();
+	mainList.add(mp);
+
+	body = Map();
+	body.put("send_mail_merge",mainList);
+
+	// ===============================
+	// Send Mail Merge
+	// ===============================
+	response = invokeurl
+	[
+		url :"https://www.zohoapis.com/crm/v5/Representative_Service/" + id + "/actions/send_mail_merge"
+		type :POST
+		parameters:body.toString()
+		connection:"zohocrm"
+	];
+
+	info response;
+}
