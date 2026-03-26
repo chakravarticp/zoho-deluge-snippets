@@ -1,0 +1,173 @@
+// ================= FETCH DATA =================
+data = zoho.crm.getRecordById("Representative_Service", id);
+email = data.get("Email");
+CC_Email = "chandan44@yopmail.com";
+opportunityMap = data.get("Opportunity");
+if(opportunityMap != null)
+{
+	opportunity_id = opportunityMap.get("id");
+	opp_data = zoho.crm.getRecordById("Deals", opportunity_id);
+	if(opp_data != null)
+	{
+		CC_Email = ifnull(opp_data.get("CC_Email"), CC_Email);
+	}
+}
+
+// ================= COMPANY NAME =================
+company = "";
+if(data.get("Account_Name") != null)
+{
+	company = data.get("Account_Name").get("name");
+}
+if(data.get("Child_Account") != null)
+{
+	company = data.get("Child_Account").get("name");
+}
+
+address = ifnull(data.get("Street"),"") + ", " +
+		  ifnull(data.get("City"),"") + ", " +
+		  ifnull(data.get("State"),"") + ", " +
+		  ifnull(data.get("Zip"),"") + ", " +
+		  ifnull(data.get("Country"),"");
+
+missingFields = List();
+
+checkField = (value, fieldName) ->
+{
+	if(value == null || value == "")
+	{
+		missingFields.add(fieldName);
+	}
+};
+
+// CHECK COMMON REQUIRED FIELDS
+checkField(company, "Company");
+checkField(data.get("Manufacturer_Name"), "Manufacturer Name");
+checkField(data.get("Manufacturer_Contact"), "Manufacturer Contact");
+checkField(data.get("Email"), "Email");
+checkField(data.get("Contract_Date"), "Contract Date");
+
+service = data.get("Service_Requested");
+type = data.get("Representative_Service_Type");
+
+configMap = Map();
+
+// ---- ISED ----
+configMap.put("Canadian ISED Representative", {
+	"5 Year Contract- Unlimited Models":{"template":"360636000000412525","action":"360636000000412546","cc":"360636000000942728"},
+	"3 Year Contract- Unlimited Models":{"template":"360636000000412579","action":"360636000000412600","cc":"360636000000942734"},
+	"1 Year Contract- Unlimited Models":{"template":"360636000000412467","action":"360636000000412488","cc":"360636000000942740"},
+	"1 Model family- Permanent":{"template":"360636000000421165","action":"360636000000421186","cc":"360636000000942746"}
+});
+
+// ---- ICES ----
+configMap.put("Canadian ICES-003 SDOC Representative", {
+	"5 Year Contract- Unlimited Models":{"template":"360636000000421219","action":"360636000000421240","cc":"360636000000942754"},
+	"3 Year Contract- Unlimited Models":{"template":"360636000000421273","action":"360636000000421294","cc":"360636000000942760"},
+	"1 Year Contract- Unlimited Models":{"template":"360636000000421327","action":"360636000000421348","cc":"360636000000942766"},
+	"1 Model family- Permanent":{"template":"360636000000421381","action":"360636000000421402","cc":"360636000000942772"}
+});
+
+// ---- FCC 22-84 ----
+configMap.put("FCC 22-84 Agent Service Of Process", {
+	"5 Year Contract- Unlimited Models":{"template":"360636000000411001","action":"360636000000411022","cc":"360636000000945232"},
+	"3 Year Contract- Unlimited Models":{"template":"360636000000411117","action":"360636000000411138","cc":"360636000000945104"},
+	"1 Year Contract- Unlimited Models":{"template":"360636000000411171","action":"360636000000411192","cc":"360636000000945272"},
+	"1 Model family- Permanent":{"template":"360636000000412093","action":"360636000000412114","cc":"360636000000945280"}
+});
+
+// ---- FCC Part 15B ----
+configMap.put("FCC Part 15b SDOC Responsible Party", {
+	"5 Year Contract- Unlimited Models":{"template":"360636000000412147","action":"360636000000412168","cc":"360636000000945224"},
+	"3 Year Contract- Unlimited Models":{"template":"360636000000412201","action":"360636000000412222","cc":"360636000000945290"},
+	"1 Year Contract- Unlimited Models":{"template":"360636000000412359","action":"360636000000412380","cc":"360636000000945298"},
+	"1 Model family- Permanent":{"template":"360636000000412413","action":"360636000000412434","cc":"360636000000945306"}
+});
+
+// ================= EXTRA FIELD VALIDATION =================
+if(type == "1 Model family- Permanent")
+{
+	checkField(data.get("Model_Number"), "Model Number");
+}
+
+// FCC specific
+if(service == "FCC 22-84 Agent Service Of Process")
+{
+	checkField(data.get("FCC_ID"), "FCC ID");
+}
+
+// ================= IF MISSING FIELDS =================
+if(missingFields.size() > 0)
+{
+	info "Missing Fields: " + missingFields;
+	return "Missing Fields: " + missingFields;
+}
+
+// ================= BUILD FIELD DATA =================
+fieldTextData = Map();
+fieldTextData.put("Text - 1", company);
+fieldTextData.put("Text - 2", address);
+fieldTextData.put("Text - 3", company);
+fieldTextData.put("Text - 4", data.get("Manufacturer_Name"));
+fieldTextData.put("Text - 5", data.get("Manufacturer_Name"));
+fieldTextData.put("Text - 6", data.get("Manufacturer_Contact_Title"));
+fieldTextData.put("Text - 7", data.get("Email"));
+fieldTextData.put("Text - 8", data.get("Manufacturer_Contact"));
+
+if(type == "1 Model family- Permanent")
+{
+	fieldTextData.put("Text - 9", data.get("Model_Number"));
+}
+
+// FCC extra
+if(service == "FCC 22-84 Agent Service Of Process")
+{
+	fieldTextData.put("Text - 9", data.get("FCC_ID"));
+}
+
+// ================= DATE =================
+fieldDateData = Map();
+fieldDateData.put("Date - 1", data.get("Contract_Date").toString("MMM dd yyyy"));
+
+// ================= ACTION =================
+conf = configMap.get(service).get(type);
+
+signer = Map();
+signer.put("recipient_name", data.get("Manufacturer_Name"));
+signer.put("recipient_email", email);
+signer.put("action_type", "SIGN");
+signer.put("action_id", conf.get("action"));
+signer.put("role", "Signer");
+
+actions = List();
+actions.add(signer);
+
+// CC
+if(CC_Email != null)
+{
+	ccMap = Map();
+	ccMap.put("recipient_name","CC Recipient");
+	ccMap.put("recipient_email",CC_Email);
+	ccMap.put("action_type","VIEW");
+	ccMap.put("action_id",conf.get("cc"));
+	actions.add(ccMap);
+}
+
+// ================= FINAL MAP =================
+templateMap = Map();
+templateMap.put("field_data",{"field_text_data":fieldTextData,"field_date_data":fieldDateData});
+templateMap.put("actions",actions);
+
+submitMap = Map();
+submitMap.put("templates",templateMap);
+
+parameters = Map();
+parameters.put("is_quicksend","true");
+parameters.put("data",submitMap);
+
+// ================= SEND =================
+response = zoho.sign.createUsingTemplate(conf.get("template"), parameters, "zsign");
+info response;
+
+
+return "";
